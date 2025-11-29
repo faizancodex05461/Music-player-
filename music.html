@@ -1,0 +1,348 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>Single-File Device Music Player</title>
+<style>
+  :root{--bg:#0f1724;--card:#0b1220;--accent:#1db954;--muted:#9aa4b2;--glass:rgba(255,255,255,0.03)}
+  *{box-sizing:border-box;font-family:Inter,Segoe UI,Roboto,Helvetica,Arial,sans-serif}
+  html,body{height:100%;margin:0;background:linear-gradient(180deg,#071021 0%,#081427 100%);color:#e6eef6}
+  .wrap{max-width:980px;margin:18px auto;padding:18px;border-radius:12px;background:linear-gradient(180deg,rgba(255,255,255,0.02),transparent);box-shadow:0 6px 30px rgba(2,6,23,0.6)}
+  header{display:flex;gap:12px;align-items:center}
+  h1{font-size:18px;margin:0}
+  .controls{display:flex;gap:10px;margin-top:12px;flex-wrap:wrap}
+  .btn{background:var(--glass);padding:10px 14px;border-radius:10px;border:1px solid rgba(255,255,255,0.03);cursor:pointer;color:var(--muted)}
+  .btn.primary{background:linear-gradient(90deg,var(--accent),#12893a);color:white;border:none}
+  .panel{display:grid;grid-template-columns:320px 1fr;gap:14px;margin-top:14px}
+  .left{padding:12px;background:linear-gradient(180deg,rgba(255,255,255,0.02),transparent);border-radius:10px}
+  .drop{height:180px;border-radius:10px;border:2px dashed rgba(255,255,255,0.04);display:flex;align-items:center;justify-content:center;text-align:center;padding:12px;color:var(--muted);cursor:pointer;background:rgba(255,255,255,0.01)}
+  .playlist{margin-top:12px;max-height:380px;overflow:auto;padding-right:6px}
+  .track{display:flex;justify-content:space-between;align-items:center;padding:8px;border-radius:8px;margin-bottom:6px;background:rgba(255,255,255,0.01);cursor:pointer}
+  .track.active{background:linear-gradient(90deg,rgba(29,185,84,0.08),rgba(29,185,84,0.02));box-shadow:inset 0 0 16px rgba(29,185,84,0.02)}
+  .big{display:flex;align-items:center;gap:8px}
+  .art{width:66px;height:66px;border-radius:8px;background:linear-gradient(180deg,#07182a,#04202f);display:flex;align-items:center;justify-content:center;font-weight:600;color:var(--muted)}
+  .meta{font-size:13px}
+  .meta .title{font-weight:600}
+  .meta .sub{color:var(--muted);font-size:12px}
+  .playerbar{padding:12px;background:linear-gradient(180deg,rgba(255,255,255,0.01),transparent);border-radius:10px;display:flex;flex-direction:column;gap:10px}
+  .buttons{display:flex;gap:10px;align-items:center}
+  .bigbtn{width:56px;height:56px;border-radius:12px;display:inline-flex;align-items:center;justify-content:center;font-size:18px}
+  input[type=range]{width:100%}
+  .eq{display:flex;gap:8px;align-items:end;height:120px;padding:6px}
+  .eq input{writing-mode:bt-lr;transform:rotate(-90deg);width:80px}
+  canvas{width:100%;height:120px;border-radius:8px;background:linear-gradient(180deg,rgba(255,255,255,0.01),transparent)}
+  footer{display:flex;justify-content:space-between;align-items:center;color:var(--muted);font-size:13px;margin-top:12px}
+  .small{font-size:12px;color:var(--muted)}
+  .flex{display:flex;gap:8px;align-items:center}
+  .pill{padding:6px 8px;border-radius:999px;background:rgba(255,255,255,0.02);font-size:12px;color:var(--muted)}
+  .righttop{display:flex;justify-content:space-between;align-items:center;gap:8px}
+  @media(max-width:880px){.panel{grid-template-columns:1fr;}.left{order:2}}
+</style>
+</head>
+<body>
+<div class="wrap" id="app">
+  <header>
+    <div style="flex:1">
+      <h1>Device Music Player — single file</h1>
+      <div class="small">Plays files from your device. Drag & drop or use Select. Export/import playlists.</div>
+    </div>
+    <div class="flex">
+      <button class="btn" id="export">Export .json</button>
+      <button class="btn" id="importBtn">Import .json</button>
+      <input id="fileInput" type="file" accept="audio/*" multiple style="display:none">
+      <button class="btn primary" id="select">Select Music</button>
+    </div>
+  </header>
+
+  <div class="controls">
+    <div class="pill" id="status">0 tracks</div>
+    <div class="pill" id="duration">00:00</div>
+    <div class="pill" id="mode">Mode: normal</div>
+    <div class="pill" id="fsupport"></div>
+  </div>
+
+  <div class="panel">
+    <div class="left">
+      <div class="drop" id="drop">Drop audio files here or click Select</div>
+      <div class="playlist" id="playlist"></div>
+      <div style="display:flex;gap:8px;margin-top:8px">
+        <button class="btn" id="shuffle">Shuffle</button>
+        <button class="btn" id="repeat">Repeat: off</button>
+        <button class="btn" id="clear">Clear</button>
+      </div>
+    </div>
+
+    <div>
+      <div class="playerbar">
+        <div style="display:flex;justify-content:space-between;align-items:center">
+          <div class="big">
+            <div class="art" id="art">♫</div>
+            <div class="meta">
+              <div class="title" id="curTitle">No track</div>
+              <div class="sub" id="curSub">—</div>
+            </div>
+          </div>
+          <div class="righttop">
+            <div class="small">Speed <span id="speedVal">1x</span></div>
+            <input type="range" id="speed" min="0.5" max="2" step="0.05" value="1" style="width:120px">
+            <div class="small">Vol</div>
+            <input type="range" id="vol" min="0" max="1" step="0.01" value="0.8" style="width:120px">
+          </div>
+        </div>
+
+        <canvas id="vis"></canvas>
+
+        <div class="buttons">
+          <button class="btn bigbtn" id="prev">⏮</button>
+          <button class="btn bigbtn" id="play">▶</button>
+          <button class="btn bigbtn" id="next">⏭</button>
+          <div style="flex:1">
+            <input type="range" id="seek" value="0" min="0" max="100">
+            <div style="display:flex;justify-content:space-between;font-size:12px;color:var(--muted)">
+              <span id="curtime">00:00</span><span id="fulltime">00:00</span>
+            </div>
+          </div>
+          <div style="width:8px"></div>
+          <button class="btn" id="download">Download</button>
+        </div>
+
+        <div style="display:flex;gap:8px;align-items:center;margin-top:8px">
+          <div class="small">3-Band EQ</div>
+          <div class="eq" id="eqwrap">
+            <div style="display:flex;flex-direction:column;align-items:center">
+              <input type="range" class="eqs" data-band="low" min="-12" max="12" step="0.5" value="0">
+              <div class="small">Bass</div>
+            </div>
+            <div style="display:flex;flex-direction:column;align-items:center">
+              <input type="range" class="eqs" data-band="mid" min="-12" max="12" step="0.5" value="0">
+              <div class="small">Mid</div>
+            </div>
+            <div style="display:flex;flex-direction:column;align-items:center">
+              <input type="range" class="eqs" data-band="high" min="-12" max="12" step="0.5" value="0">
+              <div class="small">Treble</div>
+            </div>
+          </div>
+        </div>
+
+      </div>
+      <footer>
+        <div class="small">Tip: drag & drop, keyboard space play/pause, left/right seek</div>
+        <div class="small">Built single-file • no libs</div>
+      </footer>
+    </div>
+  </div>
+
+  <input id="importJson" type="file" accept="application/json" style="display:none">
+</div>
+
+<script>
+(async()=>{const $=s=>document.querySelector(s),$$=s=>document.querySelectorAll(s)
+const fileInput=$('#fileInput'),drop=$('#drop'),playlistEl=$('#playlist'),select=$('#select'),
+playBtn=$('#play'),prevBtn=$('#prev'),nextBtn=$('#next'),seek=$('#seek'),curtime=$('#curtime'),
+fulltime=$('#fulltime'),curTitle=$('#curTitle'),curSub=$('#curSub'),art=$('#art'),
+vol=$('#vol'),speed=$('#speed'),speedVal=$('#speedVal'),shuffleBtn=$('#shuffle'),repeatBtn=$('#repeat'),
+status=$('#status'),modeEl=$('#mode'),exportBtn=$('#export'),importBtn=$('#importBtn'),importJson=$('#importJson'),
+downloadBtn=$('#download'),fsupport=$('#fsupport'),clearBtn=$('#clear')
+
+let tracks=[],index=0,shuf=false,repeat='off',audio=null,ctx,source,analyser,gainNode,filters=[]
+const saveKey='singleplayer_playlist_v1'
+
+function bytesToTime(s){s=Math.floor(s);const m=Math.floor(s/60),sec=s%60;return `${String(m).padStart(2,'0')}:${String(sec).padStart(2,'0')}`}
+
+function renderPlaylist(){
+  playlistEl.innerHTML=''
+  tracks.forEach((t,i)=>{
+    const div=document.createElement('div');div.className='track'+(i===index?' active':'')
+    div.innerHTML=`<div style="display:flex;gap:8px;align-items:center"><div style="width:40px;text-align:center;color:var(--muted)">${i+1}</div>
+      <div><div style="font-weight:600">${t.name}</div><div class="small" style="color:var(--muted)">${t.duration?bytesToTime(t.duration):'—'}</div></div></div>
+      <div class="small" style="display:flex;gap:8px;align-items:center">
+        <button class="btn" data-i="${i}" data-act="play">▶</button>
+        <button class="btn" data-i="${i}" data-act="remove">✖</button>
+      </div>`
+    playlistEl.appendChild(div)
+  })
+  status.textContent=`${tracks.length} tracks`
+  localStorage.setItem(saveKey,JSON.stringify(tracks.map(t=>({name:t.name,duration:t.duration}))))
+}
+function attachListHandlers(){
+  playlistEl.onclick=e=>{
+    const b=e.target.closest('button');if(!b) return
+    const i=Number(b.dataset.i);const act=b.dataset.act
+    if(act==='play'){index=i;loadTrack(index);play()}
+    if(act==='remove'){tracks.splice(i,1);if(index>=tracks.length)index=tracks.length-1;renderPlaylist()}
+  }
+}
+attachListHandlers()
+
+function addFiles(fileList){
+  const arr=Array.from(fileList).filter(f=>f.type.startsWith('audio/'))
+  arr.forEach(f=>tracks.push({file:f,name:f.name,duration:null,url:URL.createObjectURL(f)}))
+  // try to prefetch durations
+  arr.forEach((f,idx)=>{
+    const audioTmp=new Audio(URL.createObjectURL(f))
+    audioTmp.addEventListener('loadedmetadata',()=>{const t=tracks.find(x=>x.file===f);if(t) t.duration=audioTmp.duration;renderPlaylist()})
+  })
+  renderPlaylist()
+}
+
+select.onclick=()=>fileInput.click()
+fileInput.onchange=e=>{if(e.target.files.length) addFiles(e.target.files),fileInput.value=null}
+
+;['dragenter','dragover'].forEach(ev=>drop.addEventListener(ev,e=>{e.preventDefault();drop.style.borderColor='rgba(255,255,255,0.12)'}))
+;['dragleave','drop'].forEach(ev=>drop.addEventListener(ev,e=>{e.preventDefault();drop.style.borderColor='rgba(255,255,255,0.04)'}))
+drop.addEventListener('drop',e=>{const dt=e.dataTransfer; if(dt && dt.files.length) addFiles(dt.files)})
+
+// Audio pipeline
+function ensureAudio(){
+  if(!audio){
+    audio=new Audio();audio.crossOrigin='anonymous';audio.preload='metadata'
+    audio.onended=onEnded;audio.ontimeupdate=updateTime
+    audio.onloadedmetadata=()=>{fulltime.textContent=bytesToTime(audio.duration);seek.max=Math.floor(audio.duration)}
+    audio.addEventListener('play',()=>playBtn.textContent='⏸')
+    audio.addEventListener('pause',()=>playBtn.textContent='▶')
+    // WebAudio
+    try{
+      ctx=new (window.AudioContext||window.webkitAudioContext)()
+      source=ctx.createMediaElementSource(audio)
+      gainNode=ctx.createGain();gainNode.gain.value=Number(vol.value)
+      analyser=ctx.createAnalyser();analyser.fftSize=2048
+      // 3-band equalizer
+      const low=ctx.createBiquadFilter();low.type='lowshelf';low.frequency.value=200
+      const mid=ctx.createBiquadFilter();mid.type='peaking';mid.frequency.value=1000;mid.Q.value=1
+      const high=ctx.createBiquadFilter();high.type='highshelf';high.frequency.value=3000
+      filters=[low,mid,high]
+      source.connect(low);low.connect(mid);mid.connect(high);high.connect(gainNode);gainNode.connect(analyser);analyser.connect(ctx.destination)
+      startVisualizer()
+      fsupport.textContent='WebAudio OK'
+    }catch(err){fsupport.textContent='No WebAudio: basic playback only'}
+  }
+}
+
+function loadTrack(i){
+  if(!tracks[i]){curTitle.textContent='No track';curSub.textContent='—';return}
+  ensureAudio()
+  index=i
+  const t=tracks[i]
+  // prefer using URL stored
+  audio.src=t.url||t.file&&URL.createObjectURL(t.file) || ''
+  curTitle.textContent=t.name || 'Unknown'
+  curSub.textContent=t.duration?bytesToTime(t.duration):'Local file'
+  renderPlaylist()
+}
+
+function play(){ensureAudio();audio.play().catch(()=>{})}
+function pause(){if(audio)audio.pause()}
+playBtn.onclick=()=>{ensureAudio();if(!audio.src){if(tracks.length) loadTrack(index);else return} audio.paused?play():pause()}
+
+prevBtn.onclick=()=>{index=(index-1+tracks.length)%tracks.length;loadTrack(index);play()}
+nextBtn.onclick=()=>{if(shuf) index=Math.floor(Math.random()*tracks.length); else index=(index+1)%tracks.length;loadTrack(index);play()}
+
+function onEnded(){
+  if(repeat==='one'){loadTrack(index);play();return}
+  if(repeat==='all'){nextBtn.onclick();return}
+  if(shuf){index=Math.floor(Math.random()*tracks.length);loadTrack(index);play();return}
+  // else stop
+}
+
+function updateTime(){
+  curtime.textContent=bytesToTime(audio.currentTime)
+  seek.value=Math.floor(audio.currentTime)
+}
+
+seek.oninput=e=>{if(audio) audio.currentTime=Number(e.target.value)}
+vol.oninput=e=>{if(gainNode){gainNode.gain.value=Number(e.target.value)} if(audio) audio.volume=0; } // audio.volume kept 0 because we route audio through WebAudio
+speed.oninput=e=>{if(audio) audio.playbackRate=Number(e.target.value); speedVal.textContent=Number(e.target.value).toFixed(2)+'x'}
+
+shuffleBtn.onclick=()=>{shuf=!shuf;shuffleBtn.classList.toggle('primary',shuf);modeEl.textContent=`Mode: ${shuf?'shuffle':(repeat!=='off'?repeat:'normal')}`}
+repeatBtn.onclick=()=>{repeat = repeat==='off'?'one':repeat==='one'?'all':'off';repeatBtn.textContent=`Repeat: ${repeat}`;modeEl.textContent=`Mode: ${shuf?'shuffle':(repeat!=='off'?repeat:'normal')}`}
+
+document.addEventListener('keydown',e=>{
+  if(e.code==='Space'){e.preventDefault(); playBtn.click()}
+  if(e.key==='ArrowRight'){if(audio) audio.currentTime=Math.min(audio.duration,audio.currentTime+5)}
+  if(e.key==='ArrowLeft'){if(audio) audio.currentTime=Math.max(0,audio.currentTime-5)}
+})
+
+exportBtn.onclick=()=>{
+  const payload={meta:tracks.map(t=>({name:t.name,duration:t.duration}))}
+  const blob=new Blob([JSON.stringify(payload,0,2)],{type:'application/json'});const u=URL.createObjectURL(blob)
+  const a=document.createElement('a');a.href=u;a.download='playlist.json';a.click();URL.revokeObjectURL(u)
+}
+
+importBtn.onclick=()=>importJson.click()
+importJson.onchange=e=>{
+  const f=e.target.files[0];if(!f) return
+  const r=new FileReader();r.onload=()=>{
+    try{
+      const obj=JSON.parse(r.result)
+      if(obj.meta && Array.isArray(obj.meta)){ // we'll load names into playlist as placeholders; user must reattach files
+        tracks=obj.meta.map(m=>({name:m.name,duration:m.duration,url:null,file:null}))
+        renderPlaylist();alert('Playlist imported as metadata. Re-select matching files (drag & drop) to play them.')
+      }else alert('Invalid playlist file')
+    }catch(err){alert('Bad JSON')}
+  };r.readAsText(f);importJson.value=null
+}
+
+downloadBtn.onclick=()=>{if(!tracks[index]||!tracks[index].file){alert('No file access for download. Use Select to add file.');return}
+  const a=document.createElement('a');a.href=tracks[index].url; a.download=tracks[index].name; a.click()
+}
+
+clearBtn.onclick=()=>{if(confirm('Clear playlist?')){tracks=[];index=0;renderPlaylist()}}
+
+// EQ controls
+$$('.eqs').forEach(inp=>{
+  inp.oninput=e=>{
+    const v=Number(e.target.value)
+    if(filters.length){
+      const band=e.target.dataset.band
+      if(band==='low') filters[0].gain.value=v
+      if(band==='mid') filters[1].gain.value=v
+      if(band==='high') filters[2].gain.value=v
+    }
+  }
+})
+
+// Visualizer
+let rafId
+function startVisualizer(){
+  const canvas=$('#vis');const w=canvas.width=canvas.clientWidth;const h=canvas.height=120
+  const ctx2=canvas.getContext('2d');analyser.fftSize=1024
+  const bufferLen=analyser.frequencyBinCount;const data=new Uint8Array(bufferLen)
+  function draw(){
+    rafId=requestAnimationFrame(draw)
+    analyser.getByteFrequencyData(data)
+    ctx2.clearRect(0,0,w,h)
+    const barW = Math.max(2, w / bufferLen * 1.5)
+    for(let i=0;i<bufferLen;i++){
+      const val=data[i];const percent=val/255
+      const x=Math.floor(i*barW);const y=h - (h*percent)
+      ctx2.fillStyle=`rgba(${Math.floor(30+percent*220)},${Math.floor(180*percent)},${Math.floor(60+percent*120)},0.9)`
+      ctx2.fillRect(x,y,barW, h-y)
+    }
+  }
+  if(rafId) cancelAnimationFrame(rafId);draw()
+}
+
+// Try to restore playlist metadata from localStorage
+try{
+  const saved=JSON.parse(localStorage.getItem(saveKey)||'[]')
+  if(Array.isArray(saved) && saved.length){tracks=saved.map(s=>({name:s.name,duration:s.duration,url:null,file:null}));renderPlaylist()}
+}catch(e){}
+
+attachListHandlers()
+
+// convenience: double click drop to open files
+drop.addEventListener('click',()=>fileInput.click())
+
+// small UX: when clicking top play with no tracks, prompt file select
+playBtn.addEventListener('click',()=>{if(!tracks.length) fileInput.click()})
+
+// Try File System Access API hint
+if('showOpenFilePicker' in window){fsupport.textContent+=' • File Access API available (click Select and allow persistent access)'} 
+
+// tiny safety: revoke object URLs on unload
+window.addEventListener('beforeunload',()=>{tracks.forEach(t=>t.url&&URL.revokeObjectURL(t.url))})
+})();
+</script>
+</body>
+</html>
